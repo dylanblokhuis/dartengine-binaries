@@ -25,26 +25,11 @@ jobs:
 
       - name: Fetch Dart SDK
         run: |
-          mkdir -p dart-sdk-checkout
+          echo "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
+          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
           cd dart-sdk-checkout
           export PATH="$GITHUB_WORKSPACE/.depot_tools:$PATH"
           fetch dart
-
-      - name: Checkout Dart SDK release matching this release tag
-        run: |
-          cd dart-sdk-checkout/sdk
-          DART_TAG="${{ github.event.release.tag_name }}"
-          if git rev-parse "refs/tags/$DART_TAG" >/dev/null 2>&1; then
-            git checkout "tags/$DART_TAG" -b release-build
-            echo "Checked out Dart SDK tag: $DART_TAG"
-          else
-            git fetch --tags
-            LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "")
-            if [ -n "$LATEST_TAG" ]; then
-              git checkout "tags/$LATEST_TAG" -b release-build
-              echo "No matching Dart tag, using latest: $LATEST_TAG"
-            fi
-          fi
 
       - name: Add libdartengine group to BUILD.gn
         run: |
