@@ -51,26 +51,29 @@ jobs:
         run: |
           cd dart-sdk-checkout/sdk
           python3 << 'PYEOF'
+          import textwrap
           path = "BUILD.gn"
           with open(path, "r") as f:
               content = f.read()
-          insert = '''
-group("libdartengine") {
-  deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
-}
+          insert = textwrap.dedent("""
+          group("libdartengine") {
+            deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
+          }
 
-'''
+          """)
           # Insert after group("analysis_server") block
           # Match BUILD.gn style (one space before deps in analysis_server block)
-          old_block = '''group("analysis_server") {
-  deps = [ "utils/analysis_server" ]
-}
-'''
+          old_block = textwrap.dedent("""
+          group("analysis_server") {
+            deps = [ "utils/analysis_server" ]
+          }
+          """)
           if old_block not in content:
-              old_block = '''group("analysis_server") {
- deps = [ "utils/analysis_server" ]
-}
-'''
+              old_block = textwrap.dedent("""
+          group("analysis_server") {
+           deps = [ "utils/analysis_server" ]
+          }
+          """)
           if old_block in content:
               content = content.replace(old_block, old_block + insert, 1)
           else:
