@@ -1,0 +1,133 @@
+name: Build libdartengine
+
+on:
+  release:
+    types: [published]
+
+env:
+  DEPOT_TOOLS_UPDATE: 0
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git .depot_tools
+          echo "$GITHUB_WORKSPACE/.depot_tools" >> $GITHUB_PATH
+          echo "$GITHUB_WORKSPACE/.depot_tools" >> $GITHUB_ENV
+          echo "PATH=$GITHUB_WORKSPACE/.depot_tools:\$PATH" >> $GITHUB_ENV
+
+      - name: Configure git for depot_tools
+        run: git config --global core.autocrlf input
+
+      - name: Fetch Dart SDK
+        run: |
+          mkdir -p dart-sdk-checkout
+          cd dart-sdk-checkout
+          export PATH="$GITHUB_WORKSPACE/.depot_tools:$PATH"
+          fetch dart
+
+      - name: Checkout Dart SDK release matching this release tag
+        run: |
+          cd dart-sdk-checkout/sdk
+          DART_TAG="${{ github.event.release.tag_name }}"
+          if git rev-parse "refs/tags/$DART_TAG" >/dev/null 2>&1; then
+            git checkout "tags/$DART_TAG" -b release-build
+            echo "Checked out Dart SDK tag: $DART_TAG"
+          else
+            git fetch --tags
+            LATEST_TAG=$(git describe --tags $(git rev-list --tags --max-count=1) 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              git checkout "tags/$LATEST_TAG" -b release-build
+              echo "No matching Dart tag, using latest: $LATEST_TAG"
+            fi
+          fi
+
+      - name: Add libdartengine group to BUILD.gn
+        run: |
+          cd dart-sdk-checkout/sdk
+          python3 << 'PYEOF'
+          path = "BUILD.gn"
+          with open(path, "r") as f:
+              content = f.read()
+          insert = '''
+group("libdartengine") {
+  deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
+}
+
+'''
+          # Insert after group("analysis_server") block
+          # Match BUILD.gn style (one space before deps in analysis_server block)
+          old_block = '''group("analysis_server") {
+  deps = [ "utils/analysis_server" ]
+}
+'''
+          if old_block not in content:
+              old_block = '''group("analysis_server") {
+ deps = [ "utils/analysis_server" ]
+}
+'''
+          if old_block in content:
+              content = content.replace(old_block, old_block + insert, 1)
+          else:
+              # Fallback: insert before "if (is_fuchsia)"
+              content = content.replace('if (is_fuchsia) {', insert + 'if (is_fuchsia) {', 1)
+          with open(path, "w") as f:
+              f.write(content)
+          PYEOF
+          echo "Added libdartengine group. Relevant snippet:"
+          grep -A 4 'group("libdartengine")' BUILD.gn
+
+      - name: Build libdartengine
+        run: |
+          cd dart-sdk-checkout/sdk
+          ./tools/build.py --mode=release libdartengine
+
+      - name: Locate built .dylib artifacts
+        id: artifacts
+        run: |
+          cd dart-sdk-checkout/sdk
+          # macOS puts output in xcodebuild/Release* (e.g. ReleaseARM64, ReleaseX64)
+          JIT=$(find xcodebuild out -name 'libdart_engine_jit_shared.dylib' 2>/dev/null | head -1)
+          AOT=$(find xcodebuild out -name 'libdart_engine_aot_shared.dylib' 2>/dev/null | head -1)
+          if [ -z "$JIT" ] || [ -z "$AOT" ]; then
+            echo "Build output layout:"
+            find xcodebuild out -name '*.dylib' 2>/dev/null || true
+            exit 1
+          fi
+          echo "jit_path=$JIT" >> $GITHUB_OUTPUT
+          echo "aot_path=$AOT" >> $GITHUB_OUTPUT
+          echo "Found: $JIT, $AOT"
+
+      - name: Upload libdart_engine_jit_shared.dylib to release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd dart-sdk-checkout/sdk
+          JIT="${{ steps.artifacts.outputs.jit_path }}"
+          UPLOAD_URL="${{ github.event.release.upload_url }}"
+          # upload_url contains {?name,label}; replace with ?name=...
+          UPLOAD_URL="${UPLOAD_URL%\{*}"
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$JIT" \
+            "${UPLOAD_URL}?name=libdart_engine_jit_shared.dylib"
+
+      - name: Upload libdart_engine_aot_shared.dylib to release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd dart-sdk-checkout/sdk
+          AOT="${{ steps.artifacts.outputs.aot_path }}"
+          UPLOAD_URL="${{ github.event.release.upload_url }}"
+          UPLOAD_URL="${UPLOAD_URL%\{*}"
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"$AOT" \
+            "${UPLOAD_URL}?name=libdart_engine_aot_shared.dylib"
