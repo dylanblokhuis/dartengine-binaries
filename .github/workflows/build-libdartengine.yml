@@ -18,8 +18,7 @@ jobs:
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git .depot_tools
           echo "$GITHUB_WORKSPACE/.depot_tools" >> $GITHUB_PATH
-          echo "$GITHUB_WORKSPACE/.depot_tools" >> $GITHUB_ENV
-          echo "PATH=$GITHUB_WORKSPACE/.depot_tools:\$PATH" >> $GITHUB_ENV
+          echo "PATH=$GITHUB_WORKSPACE/.depot_tools:$PATH" >> $GITHUB_ENV
 
       - name: Configure git for depot_tools
         run: git config --global core.autocrlf input
