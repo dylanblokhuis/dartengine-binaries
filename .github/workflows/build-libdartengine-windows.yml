@@ -1,0 +1,114 @@
+name: Build libdartengine (Windows)
+
+on:
+  release:
+    types: [published]
+
+env:
+  DEPOT_TOOLS_UPDATE: 0
+  DEPOT_TOOLS_WIN_TOOLCHAIN: 0   # Use local Visual Studio, not Google-internal toolchain
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # required to update release and upload assets
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git .depot_tools
+          echo "$env:GITHUB_WORKSPACE\.depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+          echo "PATH=$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure git for depot_tools
+        run: git config --global core.autocrlf input
+
+      - name: Fetch Dart SDK
+        shell: pwsh
+        run: |
+          Write-Host "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
+          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
+          Push-Location dart-sdk-checkout
+          $env:PATH = "$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH"
+          fetch dart
+          Pop-Location
+
+      - name: Add libdartengine group to BUILD.gn
+        shell: pwsh
+        run: |
+          Push-Location dart-sdk-checkout/sdk
+          $script = @'
+          import textwrap
+          path = "BUILD.gn"
+          with open(path, "r") as f:
+              content = f.read()
+          insert = textwrap.dedent("""
+          group("libdartengine") {
+            deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
+          }
+
+          """)
+          old_block = textwrap.dedent("""
+          group("analysis_server") {
+            deps = [ "utils/analysis_server" ]
+          }
+          """)
+          if old_block not in content:
+              old_block = textwrap.dedent("""
+          group("analysis_server") {
+           deps = [ "utils/analysis_server" ]
+          }
+          """)
+          if old_block in content:
+              content = content.replace(old_block, old_block + insert, 1)
+          else:
+              content = content.replace('if (is_fuchsia) {', insert + 'if (is_fuchsia) {', 1)
+          with open(path, "w") as f:
+              f.write(content)
+          print("Added libdartengine group")
+          '@
+          python -c $script
+          Select-String -Path BUILD.gn -Pattern 'group\("libdartengine"\)' -Context 0,4
+          Pop-Location
+
+      - name: Build libdartengine
+        shell: pwsh
+        run: |
+          Push-Location dart-sdk-checkout/sdk
+          $env:PATH = "$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH"
+          python tools/build.py --mode=release libdartengine
+          Pop-Location
+
+      - name: Locate built .dll artifacts
+        id: artifacts
+        shell: pwsh
+        run: |
+          Push-Location dart-sdk-checkout/sdk
+          # Windows puts output in build/ReleaseX64 (or similar)
+          $jit = Get-ChildItem -Path build -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aot = Get-ChildItem -Path build -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $jit -or -not $aot) {
+            Write-Host "Build output layout:"
+            Get-ChildItem -Path build -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue
+            exit 1
+          }
+          $basePath = $env:GITHUB_WORKSPACE.TrimEnd('\')
+          $jitPath = $jit.FullName.Replace("$basePath\", "").Replace("\", "/")
+          $aotPath = $aot.FullName.Replace("$basePath\", "").Replace("\", "/")
+          "jit_path=$jitPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "aot_path=$aotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Found: $jitPath, $aotPath"
+          Pop-Location
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            ${{ steps.artifacts.outputs.jit_path }}
+            ${{ steps.artifacts.outputs.aot_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

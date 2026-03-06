@@ -1,0 +1,108 @@
+name: Build libdartengine (Linux)
+
+on:
+  release:
+    types: [published]
+
+env:
+  DEPOT_TOOLS_UPDATE: 0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to update release and upload assets
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 curl xz-utils
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git .depot_tools
+          echo "$GITHUB_WORKSPACE/.depot_tools" >> $GITHUB_PATH
+          echo "PATH=$GITHUB_WORKSPACE/.depot_tools:$PATH" >> $GITHUB_ENV
+
+      - name: Configure git for depot_tools
+        run: git config --global core.autocrlf input
+
+      - name: Fetch Dart SDK
+        run: |
+          echo "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
+          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
+          cd dart-sdk-checkout
+          export PATH="$GITHUB_WORKSPACE/.depot_tools:$PATH"
+          fetch dart
+
+      - name: Add libdartengine group to BUILD.gn
+        run: |
+          cd dart-sdk-checkout/sdk
+          python3 << 'PYEOF'
+          import textwrap
+          path = "BUILD.gn"
+          with open(path, "r") as f:
+              content = f.read()
+          insert = textwrap.dedent("""
+          group("libdartengine") {
+            deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
+          }
+
+          """)
+          # Insert after group("analysis_server") block
+          # Match BUILD.gn style (one space before deps in analysis_server block)
+          old_block = textwrap.dedent("""
+          group("analysis_server") {
+            deps = [ "utils/analysis_server" ]
+          }
+          """)
+          if old_block not in content:
+              old_block = textwrap.dedent("""
+          group("analysis_server") {
+           deps = [ "utils/analysis_server" ]
+          }
+          """)
+          if old_block in content:
+              content = content.replace(old_block, old_block + insert, 1)
+          else:
+              # Fallback: insert before "if (is_fuchsia)"
+              content = content.replace('if (is_fuchsia) {', insert + 'if (is_fuchsia) {', 1)
+          with open(path, "w") as f:
+              f.write(content)
+          PYEOF
+          echo "Added libdartengine group. Relevant snippet:"
+          grep -A 4 'group("libdartengine")' BUILD.gn
+
+      - name: Build libdartengine
+        run: |
+          cd dart-sdk-checkout/sdk
+          ./tools/build.py --mode=release libdartengine
+
+      - name: Locate built .so artifacts
+        id: artifacts
+        run: |
+          cd dart-sdk-checkout/sdk
+          # Linux puts output in out/ReleaseX64 (or similar)
+          JIT=$(find out -name 'libdart_engine_jit_shared.so' 2>/dev/null | head -1)
+          AOT=$(find out -name 'libdart_engine_aot_shared.so' 2>/dev/null | head -1)
+          if [ -z "$JIT" ] || [ -z "$AOT" ]; then
+            echo "Build output layout:"
+            find out -name '*.so' 2>/dev/null || true
+            exit 1
+          fi
+          echo "jit_path=$JIT" >> $GITHUB_OUTPUT
+          echo "aot_path=$AOT" >> $GITHUB_OUTPUT
+          echo "Found: $JIT, $AOT"
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.jit_path }}
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.aot_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
