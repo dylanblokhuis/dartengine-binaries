@@ -90,31 +90,11 @@ jobs:
           echo "aot_path=$AOT" >> $GITHUB_OUTPUT
           echo "Found: $JIT, $AOT"
 
-      - name: Upload libdart_engine_jit_shared.dylib to release
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.jit_path }}
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.aot_path }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          cd dart-sdk-checkout/sdk
-          JIT="${{ steps.artifacts.outputs.jit_path }}"
-          UPLOAD_URL="${{ github.event.release.upload_url }}"
-          # upload_url contains {?name,label}; replace with ?name=...
-          UPLOAD_URL="${UPLOAD_URL%\{*}"
-          curl -sS -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$JIT" \
-            "${UPLOAD_URL}?name=libdart_engine_jit_shared.dylib"
-
-      - name: Upload libdart_engine_aot_shared.dylib to release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          cd dart-sdk-checkout/sdk
-          AOT="${{ steps.artifacts.outputs.aot_path }}"
-          UPLOAD_URL="${{ github.event.release.upload_url }}"
-          UPLOAD_URL="${UPLOAD_URL%\{*}"
-          curl -sS -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @"$AOT" \
-            "${UPLOAD_URL}?name=libdart_engine_aot_shared.dylib"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
