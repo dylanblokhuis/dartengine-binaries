@@ -6,18 +6,18 @@ on:
 
 env:
   DEPOT_TOOLS_UPDATE: 0
-  DEPOT_TOOLS_WIN_TOOLCHAIN: 0   # Use local Visual Studio, not Google-internal toolchain
+  DEPOT_TOOLS_WIN_TOOLCHAIN: 0 # Use local Visual Studio, not Google-internal toolchain
 
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write   # required to update release and upload assets
+      contents: write # required to update release and upload assets
     steps:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -125,12 +125,17 @@ jobs:
         shell: pwsh
         run: |
           Push-Location dart-sdk/sdk
-          # Windows puts output in build/ReleaseX64 (or similar)
-          $jit = Get-ChildItem -Path build -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $aot = Get-ChildItem -Path build -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          # ninja -C out\ReleaseX64 libdartengine → DLLs in out/ReleaseX64
+          $outDir = "out\ReleaseX64"
+          $jit = Get-ChildItem -Path $outDir -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aot = Get-ChildItem -Path $outDir -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $jit -or -not $aot) {
-            Write-Host "Build output layout:"
-            Get-ChildItem -Path build -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue
+            $jit = Get-ChildItem -Path out -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aot = Get-ChildItem -Path out -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $jit -or -not $aot) {
+            Write-Host "Build output layout (out):"
+            Get-ChildItem -Path out -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue
             exit 1
           }
           $basePath = $env:GITHUB_WORKSPACE.TrimEnd('\')
