@@ -33,14 +33,15 @@ jobs:
       - name: Fetch Dart SDK
         run: |
           echo "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
-          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
-          cd dart-sdk-checkout
           export PATH="$GITHUB_WORKSPACE/.depot_tools:$PATH"
+          mkdir dart-sdk
+          cd dart-sdk
           fetch dart
+          git checkout ${{ github.event.release.tag_name }}
 
       - name: Add libdartengine group to BUILD.gn
         run: |
-          cd dart-sdk-checkout/sdk
+          cd dart-sdk/sdk
           python3 << 'PYEOF'
           import textwrap
           path = "BUILD.gn"
@@ -78,13 +79,13 @@ jobs:
 
       - name: Build libdartengine
         run: |
-          cd dart-sdk-checkout/sdk
+          cd dart-sdk/sdk
           ./tools/build.py --mode=release libdartengine
 
       - name: Locate built .so artifacts
         id: artifacts
         run: |
-          cd dart-sdk-checkout/sdk
+          cd dart-sdk/sdk
           # Linux puts output in out/ReleaseX64 (or similar)
           JIT=$(find out -name 'libdart_engine_jit_shared.so' 2>/dev/null | head -1)
           AOT=$(find out -name 'libdart_engine_aot_shared.so' 2>/dev/null | head -1)
@@ -102,7 +103,7 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.jit_path }}
-            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.aot_path }}
+            dart-sdk/sdk/${{ steps.artifacts.outputs.jit_path }}
+            dart-sdk/sdk/${{ steps.artifacts.outputs.aot_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
