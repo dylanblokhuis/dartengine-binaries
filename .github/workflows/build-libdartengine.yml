@@ -28,15 +28,16 @@ jobs:
       - name: Fetch Dart SDK
         run: |
           echo "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
+          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
+          cd dart-sdk-checkout
           export PATH="$GITHUB_WORKSPACE/.depot_tools:$PATH"
-          mkdir dart-sdk
-          cd dart-sdk
           fetch dart
+          cd sdk
           git checkout ${{ github.event.release.tag_name }}
 
       - name: Add libdartengine group to BUILD.gn
         run: |
-          cd dart-sdk/sdk
+          cd dart-sdk-checkout/sdk
           python3 << 'PYEOF'
           import textwrap
           path = "BUILD.gn"
@@ -74,13 +75,13 @@ jobs:
 
       - name: Build libdartengine
         run: |
-          cd dart-sdk/sdk
+          cd dart-sdk-checkout/sdk
           ./tools/build.py --mode=release libdartengine
 
       - name: Locate built .dylib artifacts
         id: artifacts
         run: |
-          cd dart-sdk/sdk
+          cd dart-sdk-checkout/sdk
           # macOS puts output in xcodebuild/Release* (e.g. ReleaseARM64, ReleaseX64)
           JIT=$(find xcodebuild out -name 'libdart_engine_jit_shared.dylib' 2>/dev/null | head -1)
           AOT=$(find xcodebuild out -name 'libdart_engine_aot_shared.dylib' 2>/dev/null | head -1)
@@ -98,7 +99,7 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            dart-sdk/sdk/${{ steps.artifacts.outputs.jit_path }}
-            dart-sdk/sdk/${{ steps.artifacts.outputs.aot_path }}
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.jit_path }}
+            dart-sdk-checkout/sdk/${{ steps.artifacts.outputs.aot_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
