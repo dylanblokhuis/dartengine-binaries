@@ -3,6 +3,12 @@
 Prebuilt Dart VM engine shared libraries (JIT and AOT) for macOS, built from the
 [Dart SDK](https://github.com/dart-lang/sdk).
 
+Dart Engine is a way to easily embed Dart into your own app by using the
+DartEngine_* symbols. Although its currently hard to get the full dev tooling
+fully setup like hot reloading, I'd recommend to use
+https://github.com/fuzzybinary/dart_shared_library in development and use
+DartEngine in production for maximum performance.
+
 ## Downloads
 
 Go to [Releases](https://github.com/YOUR_ORG/dartengine-binaries/releases) and
@@ -20,7 +26,7 @@ ARM64 on current GitHub-hosted macOS).
 
 When you
 [publish a release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-your-repository)
-(e.g. tag `v3.5.0`):
+(e.g. tag `v3.11.0`):
 
 1. A GitHub Action runs on `macos-latest`.
 2. The workflow fetches the Dart SDK (via depot_tools) and checks out the **same
@@ -35,8 +41,8 @@ corresponding engine shared libraries.
 
 ## Versioning
 
-Use release tags that match the Dart SDK when possible (e.g. `v3.5.0` for Dart
-SDK 3.5.0). That way the workflow will build from the same Dart version and the
+Use release tags that match the Dart SDK when possible (e.g. `v3.11.0` for Dart
+SDK 3.11.0). That way the workflow will build from the same Dart version and the
 artifacts align with that SDK.
 
 ## License
