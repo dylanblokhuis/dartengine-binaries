@@ -35,26 +35,29 @@ jobs:
           python %*
           "@ | Out-File -FilePath .depot_tools/python3.cmd -Encoding ASCII
 
-      - name: Configure git for depot_tools
-        run: git config --global core.autocrlf input
-
       - name: Fetch Dart SDK
         shell: pwsh
         run: |
-          Write-Host "Fetching Dart SDK with tag: ${{ github.event.release.tag_name }}"
-          git clone https://github.com/dart-lang/sdk.git --depth 1 --branch ${{ github.event.release.tag_name }} dart-sdk-checkout
-          Push-Location dart-sdk-checkout
+          $tag = "${{ github.event.release.tag_name }}"
+          Write-Host "Fetching Dart SDK with tag: $tag"
           $env:PATH = "$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH"
-          fetch dart
-          Push-Location sdk
-          git checkout ${{ github.event.release.tag_name }}
+          git config --global core.autocrlf false
+          New-Item -ItemType Directory -Path dart-sdk -Force
+          Push-Location dart-sdk
+          fetch --no-history dart
           Pop-Location
+          Push-Location dart-sdk/sdk
+          $refspec = "refs/tags/$tag" + ":refs/tags/$tag"
+          git fetch origin $refspec
+          git checkout -f "tags/$tag"
+          gclient sync -D --no-history
           Pop-Location
+          git config --global core.autocrlf true
 
       - name: Add libdartengine group to BUILD.gn
         shell: pwsh
         run: |
-          Push-Location dart-sdk-checkout/sdk
+          Push-Location dart-sdk/sdk
           $script = @'
           import textwrap
           path = "BUILD.gn"
@@ -92,16 +95,16 @@ jobs:
       - name: Build libdartengine
         shell: pwsh
         run: |
-          Push-Location dart-sdk-checkout/sdk
+          Push-Location dart-sdk/sdk
           $env:PATH = "$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH"
-          python tools/build.py --mode=release libdartengine
+          python tools/build.py -m release libdartengine
           Pop-Location
 
       - name: Locate built .dll artifacts
         id: artifacts
         shell: pwsh
         run: |
-          Push-Location dart-sdk-checkout/sdk
+          Push-Location dart-sdk/sdk
           # Windows puts output in build/ReleaseX64 (or similar)
           $jit = Get-ChildItem -Path build -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
           $aot = Get-ChildItem -Path build -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
