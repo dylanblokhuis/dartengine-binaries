@@ -14,6 +14,11 @@ jobs:
     permissions:
       contents: write   # required to update release and upload assets
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -22,6 +27,13 @@ jobs:
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git .depot_tools
           echo "$env:GITHUB_WORKSPACE\.depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Append
           echo "PATH=$env:GITHUB_WORKSPACE\.depot_tools;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create python3 wrapper for Windows
+        run: |
+          @"
+          @echo off
+          python %*
+          "@ | Out-File -FilePath .depot_tools/python3.cmd -Encoding ASCII
 
       - name: Configure git for depot_tools
         run: git config --global core.autocrlf input
