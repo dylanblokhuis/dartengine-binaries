@@ -10,6 +10,8 @@ env:
 jobs:
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write   # required to update release and upload assets
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
