@@ -120,30 +120,36 @@ jobs:
           python tools/build.py -m release libdartengine
           Pop-Location
 
-      - name: Locate built .dll artifacts
+      - name: Locate built .dll and .lib artifacts
         id: artifacts
         shell: pwsh
         run: |
           Push-Location dart-sdk/sdk
-          # ninja -C out\ReleaseX64 libdartengine → DLLs in out/ReleaseX64
+          # ninja -C out\ReleaseX64 libdartengine → DLLs and .lib import libs in out/ReleaseX64
           $outDir = "out\ReleaseX64"
-          $jit = Get-ChildItem -Path $outDir -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $aot = Get-ChildItem -Path $outDir -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $jit -or -not $aot) {
-            $jit = Get-ChildItem -Path out -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-            $aot = Get-ChildItem -Path out -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $jitDll = Get-ChildItem -Path $outDir -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aotDll = Get-ChildItem -Path $outDir -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $jitDll -or -not $aotDll) {
+            $jitDll = Get-ChildItem -Path out -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aotDll = Get-ChildItem -Path out -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
           }
-          if (-not $jit -or -not $aot) {
+          if (-not $jitDll -or -not $aotDll) {
             Write-Host "Build output layout (out):"
             Get-ChildItem -Path out -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue
             exit 1
           }
           $basePath = $env:GITHUB_WORKSPACE.TrimEnd('\')
-          $jitPath = $jit.FullName.Replace("$basePath\", "").Replace("\", "/")
-          $aotPath = $aot.FullName.Replace("$basePath\", "").Replace("\", "/")
-          "jit_path=$jitPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "aot_path=$aotPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Found: $jitPath, $aotPath"
+          "jit_path=$($jitDll.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "aot_path=$($aotDll.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # .lib import libraries (required for linking against the DLL on Windows)
+          $jitDir = Split-Path $jitDll.FullName
+          $jitLib = Get-ChildItem -Path $jitDir -Filter "dart_engine_jit_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aotLib = Get-ChildItem -Path $jitDir -Filter "dart_engine_aot_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($jitLib) { "jit_lib_path=$($jitLib.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          if ($aotLib) { "aot_lib_path=$($aotLib.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          Write-Host "Found: jit $($jitDll.FullName), aot $($aotDll.FullName)"
+          if ($jitLib) { Write-Host "Found jit .lib: $($jitLib.FullName)" }
+          if ($aotLib) { Write-Host "Found aot .lib: $($aotLib.FullName)" }
           Pop-Location
 
       - name: Upload to Release
@@ -153,5 +159,7 @@ jobs:
           files: |
             ${{ steps.artifacts.outputs.jit_path }}
             ${{ steps.artifacts.outputs.aot_path }}
+            ${{ steps.artifacts.outputs.jit_lib_path }}
+            ${{ steps.artifacts.outputs.aot_lib_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
