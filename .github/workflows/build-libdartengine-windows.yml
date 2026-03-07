@@ -120,36 +120,31 @@ jobs:
           python tools/build.py -m release libdartengine
           Pop-Location
 
-      - name: Locate built .dll and .lib artifacts
+      - name: Locate built .dll, .lib and .pdb artifacts
         id: artifacts
         shell: pwsh
         run: |
           Push-Location dart-sdk/sdk
-          # ninja -C out\ReleaseX64 libdartengine → DLLs and .lib import libs in out/ReleaseX64
-          $outDir = "out\ReleaseX64"
-          $jitDll = Get-ChildItem -Path $outDir -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $aotDll = Get-ChildItem -Path $outDir -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $jitDll -or -not $aotDll) {
-            $jitDll = Get-ChildItem -Path out -Recurse -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-            $aotDll = Get-ChildItem -Path out -Recurse -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $jitDll -or -not $aotDll) {
-            Write-Host "Build output layout (out):"
-            Get-ChildItem -Path out -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue
-            exit 1
-          }
+          # On Windows all artifacts are in out/ReleaseX64/clang_x64_shared
+          $artifactsDir = "out\ReleaseX64\clang_x64_shared"
+          $jitDll = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_jit_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aotDll = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_aot_shared.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
           $basePath = $env:GITHUB_WORKSPACE.TrimEnd('\')
           "jit_path=$($jitDll.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "aot_path=$($aotDll.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          # .lib import libraries (required for linking against the DLL on Windows)
-          $jitDir = Split-Path $jitDll.FullName
-          $jitLib = Get-ChildItem -Path $jitDir -Filter "dart_engine_jit_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $aotLib = Get-ChildItem -Path $jitDir -Filter "dart_engine_aot_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $jitLib = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_jit_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aotLib = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_aot_shared.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $jitPdb = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_jit_shared.pdb" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $aotPdb = Get-ChildItem -Path $artifactsDir -Filter "dart_engine_aot_shared.pdb" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($jitLib) { "jit_lib_path=$($jitLib.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
           if ($aotLib) { "aot_lib_path=$($aotLib.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          if ($jitPdb) { "jit_pdb_path=$($jitPdb.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
+          if ($aotPdb) { "aot_pdb_path=$($aotPdb.FullName.Replace("$basePath\", "").Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append }
           Write-Host "Found: jit $($jitDll.FullName), aot $($aotDll.FullName)"
           if ($jitLib) { Write-Host "Found jit .lib: $($jitLib.FullName)" }
           if ($aotLib) { Write-Host "Found aot .lib: $($aotLib.FullName)" }
+          if ($jitPdb) { Write-Host "Found jit .pdb: $($jitPdb.FullName)" }
+          if ($aotPdb) { Write-Host "Found aot .pdb: $($aotPdb.FullName)" }
           Pop-Location
 
       - name: Upload to Release
@@ -161,5 +156,7 @@ jobs:
             ${{ steps.artifacts.outputs.aot_path }}
             ${{ steps.artifacts.outputs.jit_lib_path }}
             ${{ steps.artifacts.outputs.aot_lib_path }}
+            ${{ steps.artifacts.outputs.jit_pdb_path }}
+            ${{ steps.artifacts.outputs.aot_pdb_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
