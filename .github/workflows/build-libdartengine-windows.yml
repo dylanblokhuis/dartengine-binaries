@@ -125,38 +125,49 @@ jobs:
           python tools/build.py -m release libdartengine
           Pop-Location
 
-      - name: Locate built .dll, .lib and .pdb artifacts
+      - name: Locate built artifacts and create zip
         id: artifacts
         shell: pwsh
         run: |
           Push-Location dart-sdk/sdk
           # On Windows all artifacts are in out/ReleaseX64/clang_x64_shared
           $artifactsDir = "out\ReleaseX64\clang_x64_shared"
-          # set the paths to the artifacts
-          $jit_path = "$artifactsDir\dart_engine_jit_shared.dll"
-          $aot_path = "$artifactsDir\dart_engine_aot_shared.dll"
-          $jit_lib_path = "$artifactsDir\dart_engine_jit_shared.lib"
-          $aot_lib_path = "$artifactsDir\dart_engine_aot_shared.lib"
-          $jit_pdb_path = "$artifactsDir\dart_engine_jit_shared.pdb"
-          $aot_pdb_path = "$artifactsDir\dart_engine_aot_shared.pdb"
-          "jit_path=$jit_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "aot_path=$aot_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "jit_lib_path=$jit_lib_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "aot_lib_path=$aot_lib_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "jit_pdb_path=$jit_pdb_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "aot_pdb_path=$aot_pdb_path" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $jitDll = Get-Item "$artifactsDir\dart_engine_jit_shared.dll" -ErrorAction Stop
+          $aotDll = Get-Item "$artifactsDir\dart_engine_aot_shared.dll" -ErrorAction Stop
+          # Windows build outputs .dll.lib and .dll.pdb; we rename to .lib and .pdb in the zip
+          $jitLib = Get-Item "$artifactsDir\dart_engine_jit_shared.dll.lib" -ErrorAction SilentlyContinue
+          $aotLib = Get-Item "$artifactsDir\dart_engine_aot_shared.dll.lib" -ErrorAction SilentlyContinue
+          $jitPdb = Get-Item "$artifactsDir\dart_engine_jit_shared.dll.pdb" -ErrorAction SilentlyContinue
+          $aotPdb = Get-Item "$artifactsDir\dart_engine_aot_shared.dll.pdb" -ErrorAction SilentlyContinue
+          $genSnapshot = Get-ChildItem -Path out -Recurse -Filter "gen_snapshot.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $vmPlatform = Get-ChildItem -Path out -Recurse -Filter "vm_platform.dill" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $genKernelAot = Get-ChildItem -Path out -Recurse -Filter "gen_kernel_aot.dart.snapshot" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $genSnapshot -or -not $vmPlatform -or -not $genKernelAot) {
+            Write-Host "Missing gen_snapshot, vm_platform.dill or gen_kernel_aot.dart.snapshot"
+            if (-not $genSnapshot) { Write-Host "gen_snapshot.exe not found" }
+            if (-not $vmPlatform) { Write-Host "vm_platform.dill not found" }
+            if (-not $genKernelAot) { Write-Host "gen_kernel_aot.dart.snapshot not found" }
+            exit 1
+          }
+          $zipName = "dartengine-${{ github.event.release.tag_name }}-windows.zip"
+          $releaseZip = Join-Path $env:GITHUB_WORKSPACE "release_zip"
+          New-Item -ItemType Directory -Path $releaseZip -Force | Out-Null
+          Copy-Item $jitDll.FullName, $aotDll.FullName -Destination $releaseZip
+          if ($jitLib) { Copy-Item $jitLib.FullName -Destination (Join-Path $releaseZip "dart_engine_jit_shared.lib") }
+          if ($aotLib) { Copy-Item $aotLib.FullName -Destination (Join-Path $releaseZip "dart_engine_aot_shared.lib") }
+          if ($jitPdb) { Copy-Item $jitPdb.FullName -Destination (Join-Path $releaseZip "dart_engine_jit_shared.pdb") }
+          if ($aotPdb) { Copy-Item $aotPdb.FullName -Destination (Join-Path $releaseZip "dart_engine_aot_shared.pdb") }
+          Copy-Item $genSnapshot.FullName, $vmPlatform.FullName, $genKernelAot.FullName -Destination $releaseZip
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $zipName
+          Compress-Archive -Path "$releaseZip\*" -DestinationPath $zipPath -Force
+          "zip_path=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Created $zipName with DLLs, .lib, .pdb, gen_snapshot, vm_platform.dill, gen_kernel_aot.dart.snapshot"
           Pop-Location
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            ${{ steps.artifacts.outputs.jit_path }}
-            ${{ steps.artifacts.outputs.aot_path }}
-            ${{ steps.artifacts.outputs.jit_lib_path }}
-            ${{ steps.artifacts.outputs.aot_lib_path }}
-            ${{ steps.artifacts.outputs.jit_pdb_path }}
-            ${{ steps.artifacts.outputs.aot_pdb_path }}
+          files: ${{ steps.artifacts.outputs.zip_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
