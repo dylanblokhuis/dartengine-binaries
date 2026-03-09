@@ -1,2 +1,6 @@
 test
 build-libdartengine-windows.ps1
+dart-sdk
+.depot_tools
+.DS_Store
+*.sh

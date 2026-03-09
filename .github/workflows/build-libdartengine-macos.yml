@@ -1,4 +1,4 @@
-name: Build libdartengine
+name: Build libdartengine (macOS)
 
 on:
   release:
@@ -81,7 +81,7 @@ jobs:
           cd dart-sdk/sdk
           ./tools/build.py -m release libdartengine
 
-      - name: Locate built .dylib artifacts
+      - name: Locate built artifacts and create zip
         id: artifacts
         run: |
           cd dart-sdk/sdk
@@ -93,16 +93,27 @@ jobs:
             find xcodebuild out -name '*.dylib' 2>/dev/null || true
             exit 1
           fi
-          echo "jit_path=$JIT" >> $GITHUB_OUTPUT
-          echo "aot_path=$AOT" >> $GITHUB_OUTPUT
-          echo "Found: $JIT, $AOT"
+          BUILD_DIR=$(dirname "$JIT")
+          GEN_SNAPSHOT=$(find "$BUILD_DIR" -maxdepth 2 -name 'gen_snapshot' -type f 2>/dev/null | head -1)
+          VM_PLATFORM=$(find "$BUILD_DIR" -maxdepth 2 -name 'vm_platform.dill' 2>/dev/null | head -1)
+          GEN_KERNEL_AOT=$(find "$BUILD_DIR" -maxdepth 2 -name 'gen_kernel_aot.dart.snapshot' 2>/dev/null | head -1)
+          if [ -z "$GEN_SNAPSHOT" ] || [ -z "$VM_PLATFORM" ] || [ -z "$GEN_KERNEL_AOT" ]; then
+            echo "Missing gen_snapshot, vm_platform.dill or gen_kernel_aot.dart.snapshot. Build layout:"
+            find xcodebuild out -maxdepth 3 -type f \( -name 'gen_snapshot' -o -name 'vm_platform.dill' -o -name 'gen_kernel_aot.dart.snapshot' \) 2>/dev/null || true
+            exit 1
+          fi
+          ZIP_NAME="dartengine-${{ github.event.release.tag_name }}-macos.zip"
+          mkdir -p release_zip
+          cp "$JIT" "$AOT" "$GEN_SNAPSHOT" "$VM_PLATFORM" "$GEN_KERNEL_AOT" release_zip/
+          cd release_zip && zip -r "../$ZIP_NAME" . && cd ..
+          mv "$ZIP_NAME" "$GITHUB_WORKSPACE/$ZIP_NAME"
+          echo "zip_path=$ZIP_NAME" >> $GITHUB_OUTPUT
+          echo "Created $ZIP_NAME with dylibs, gen_snapshot, vm_platform.dill, gen_kernel_aot.dart.snapshot"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            dart-sdk/sdk/${{ steps.artifacts.outputs.jit_path }}
-            dart-sdk/sdk/${{ steps.artifacts.outputs.aot_path }}
+          files: ${{ steps.artifacts.outputs.zip_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
