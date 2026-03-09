@@ -53,7 +53,12 @@ jobs:
               content = f.read()
           insert = textwrap.dedent("""
           group("libdartengine") {
-            deps = [ "runtime/engine:dart_engine_jit_shared", "runtime/engine:dart_engine_aot_shared" ]
+            deps = [
+              "runtime/engine:dart_engine_jit_shared",
+              "runtime/engine:dart_engine_aot_shared",
+              "runtime/bin:gen_snapshot",
+              "utils/gen_kernel:gen_kernel",
+            ]
           }
 
           """)
