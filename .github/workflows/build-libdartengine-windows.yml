@@ -89,7 +89,7 @@ jobs:
               "runtime/engine:dart_engine_jit_shared",
               "runtime/engine:dart_engine_aot_shared",
               "runtime/bin:gen_snapshot",
-              "runtime/bin:dartaotruntime",
+              "runtime/bin:dartaotruntime_product",
               "utils/gen_kernel:gen_kernel",
             ]
           }
@@ -141,7 +141,7 @@ jobs:
           $jitPdb = Get-Item "$artifactsDir\dart_engine_jit_shared.dll.pdb" -ErrorAction SilentlyContinue
           $aotPdb = Get-Item "$artifactsDir\dart_engine_aot_shared.dll.pdb" -ErrorAction SilentlyContinue
           $genSnapshot = Get-ChildItem -Path out -Recurse -Filter "gen_snapshot.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $dartaotruntime = Get-ChildItem -Path out -Recurse -Filter "dartaotruntime.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $dartaotruntime = Get-ChildItem -Path out -Recurse -Filter "dartaotruntime_product.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           $vmPlatform = Get-ChildItem -Path out -Recurse -Filter "vm_platform.dill" -ErrorAction SilentlyContinue | Select-Object -First 1
           $genKernelAot = Get-ChildItem -Path out -Recurse -Filter "gen_kernel_aot.dart.snapshot" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $genSnapshot -or -not $vmPlatform -or -not $genKernelAot -or -not $dartaotruntime) {
@@ -149,7 +149,7 @@ jobs:
             if (-not $genSnapshot) { Write-Host "gen_snapshot.exe not found" }
             if (-not $vmPlatform) { Write-Host "vm_platform.dill not found" }
             if (-not $genKernelAot) { Write-Host "gen_kernel_aot.dart.snapshot not found" }
-            if (-not $dartaotruntime) { Write-Host "dartaotruntime.exe not found" }
+            if (-not $dartaotruntime) { Write-Host "dartaotruntime_product.exe not found" }
             exit 1
           }
           $zipName = "dartengine-${{ github.event.release.tag_name }}-windows.zip"
