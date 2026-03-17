@@ -57,6 +57,7 @@ jobs:
               "runtime/engine:dart_engine_jit_shared",
               "runtime/engine:dart_engine_aot_shared",
               "runtime/bin:gen_snapshot",
+              "runtime/bin:dartaotruntime",
               "utils/gen_kernel:gen_kernel",
             ]
           }
@@ -105,20 +106,21 @@ jobs:
           fi
           BUILD_DIR=$(dirname "$JIT")
           GEN_SNAPSHOT=$(find "$BUILD_DIR" -maxdepth 2 -name 'gen_snapshot' -type f 2>/dev/null | head -1)
+          DARTAOTRUNTIME=$(find "$BUILD_DIR" -maxdepth 2 -name 'dartaotruntime' -type f 2>/dev/null | head -1)
           VM_PLATFORM=$(find "$BUILD_DIR" -maxdepth 2 -name 'vm_platform.dill' 2>/dev/null | head -1)
           GEN_KERNEL_AOT=$(find "$BUILD_DIR" -maxdepth 2 -name 'gen_kernel_aot.dart.snapshot' 2>/dev/null | head -1)
-          if [ -z "$GEN_SNAPSHOT" ] || [ -z "$VM_PLATFORM" ] || [ -z "$GEN_KERNEL_AOT" ]; then
-            echo "Missing gen_snapshot, vm_platform.dill or gen_kernel_aot.dart.snapshot. Build layout:"
-            find out -maxdepth 4 -type f \( -name 'gen_snapshot' -o -name 'vm_platform.dill' -o -name 'gen_kernel_aot.dart.snapshot' \) 2>/dev/null || true
+          if [ -z "$GEN_SNAPSHOT" ] || [ -z "$VM_PLATFORM" ] || [ -z "$GEN_KERNEL_AOT" ] || [ -z "$DARTAOTRUNTIME" ]; then
+            echo "Missing gen_snapshot, dartaotruntime, vm_platform.dill or gen_kernel_aot.dart.snapshot. Build layout:"
+            find out -maxdepth 4 -type f \( -name 'gen_snapshot' -o -name 'dartaotruntime' -o -name 'vm_platform.dill' -o -name 'gen_kernel_aot.dart.snapshot' \) 2>/dev/null || true
             exit 1
           fi
           ZIP_NAME="dartengine-${{ github.event.release.tag_name }}-linux.zip"
           mkdir -p release_zip
-          cp "$JIT" "$AOT" "$GEN_SNAPSHOT" "$VM_PLATFORM" "$GEN_KERNEL_AOT" release_zip/
+          cp "$JIT" "$AOT" "$GEN_SNAPSHOT" "$DARTAOTRUNTIME" "$VM_PLATFORM" "$GEN_KERNEL_AOT" release_zip/
           cd release_zip && zip -r "../$ZIP_NAME" . && cd ..
           mv "$ZIP_NAME" "$GITHUB_WORKSPACE/$ZIP_NAME"
           echo "zip_path=$ZIP_NAME" >> $GITHUB_OUTPUT
-          echo "Created $ZIP_NAME with .so, gen_snapshot, vm_platform.dill, gen_kernel_aot.dart.snapshot"
+          echo "Created $ZIP_NAME with .so, gen_snapshot, dartaotruntime, vm_platform.dill, gen_kernel_aot.dart.snapshot"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
